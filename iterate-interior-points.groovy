@@ -151,7 +151,7 @@ println("Recomputing convex hull...")
 Polyhedron_3 hull = new Polyhedron_3();
 CGAL_Convex_hull_3.convex_hull_3(points.iterator(), hull);
 println("convex hull has " + hull.size_of_vertices() + " vertices");
-println("is strongly convex? " + CGAL_Convex_hull_3.is_strongly_convex_3(hull));
+//println("is strongly convex? " + CGAL_Convex_hull_3.is_strongly_convex_3(hull));
 println("Is the hull closed? " + hull.is_closed())
 
 //---------------------------------------------
@@ -184,8 +184,8 @@ cx = (xMin + xMax) / 2
 cy = (yMin + yMax) / 2
 cz = (zMin + zMax) / 2
 println("Center point = (${cx}, ${cy}, ${cz})")
-Side_of_triangle_mesh f = new Side_of_triangle_mesh(hull); // <-- This fails if our original P is used. :-(
-bs = f.bounded_side(new Point_3(cx, cy, cz))
+Side_of_triangle_mesh sotm = new Side_of_triangle_mesh(hull); // <-- This fails if our original P is used. :-(
+bs = sotm.bounded_side(new Point_3(cx, cy, cz))
 println("Bounded side = ${bs}")
 // The three possibilities are:
 // - Bounded_side.ON_BOUNDED_SIDE
@@ -246,37 +246,55 @@ def pointInside(polyhedron, pt) {
 
 import ij3d.Image3DUniverse;
 
-final Image3DUniverse univ = new Image3DUniverse();
+// First, add the mesh itself.
 
-import customnode.Sphere;
+Image3DUniverse univ = new Image3DUniverse();
+
+//univ.addVoltex(imp, 1);
+
+import customnode.CustomTriangleMesh;
+import org.scijava.vecmath.Color3f;
+
+List<Point3f> pts_3dv = new ArrayList<>();
+for (t in mesh.triangles()) {
+	pts_3dv.add(new Point3f(t.v0xf(), t.v0yf(), t.v0zf()));	
+	pts_3dv.add(new Point3f(t.v1xf(), t.v1yf(), t.v1zf()));	
+	pts_3dv.add(new Point3f(t.v2xf(), t.v2yf(), t.v2zf()));	
+}
+CustomTriangleMesh mesh_3dv = new CustomTriangleMesh(pts_3dv);
+println("Mesh volume according to 3D Viewer: ${mesh_3dv.getVolume()}");
+mesh_3dv.setTransparency(0.5);
+mesh_3dv.setColor(new Color3f(java.awt.Color.magenta));
+univ.addCustomMesh(mesh_3dv, "Mesh");
+
+// Now, compute and add the points.
+
+import CGAL.Kernel.Bounded_side;
+import customnode.CustomPointMesh;
 import org.scijava.vecmath.Point3f;
 
-println("Building 3D scene with all interior integer points")
-radius = 0.2f;
-for (int z=(int) Math.floor(zMin); z<=Math.ceil(zMax); z++) {
-	for (int y=(int) Math.floor(yMin); y<=Math.ceil(yMax); y++) {
-		for (int x=(int) Math.floor(xMin); x<=Math.ceil(xMax); x++) {
-			sphere = new Sphere(new Point3f(x, y, z), radius);
-			univ.addCustomMesh(sphere, "(${x}, ${y}, ${z})")
+println("Building 3D view of interior integer points")
+List<Point3f> vPoints = new ArrayList<>();
+int ixMin = Math.ceil(xMin), ixMax = Math.floor(xMax);
+int iyMin = Math.ceil(yMin), iyMax = Math.floor(yMax);
+int izMin = Math.ceil(zMin), izMax = Math.floor(zMax);
+int step = 3;
+Point_3 pt = new Point_3()
+for (z=izMin; z<=izMax; z += step) {
+	println("z -> ${z} of ${izMax - izMin + 1}")
+	for (y=iyMin; y<=iyMax; y += step) {
+		for (x=ixMin; x<=ixMax; x += step) {
+			pt.set_coordinates(x, y, z);
+			boolean interior = false;
+//			try {
+				interior = sotm.bounded_side(pt) != Bounded_side.ON_UNBOUNDED_SIDE;
+//			}
+//			catch (Exception ex) { } // CGAL.Java.SWIGCGALException can happen.
+			if (interior) vPoints.add(new Point3f(x, y, z));
 		}
 	}
 }
-println("Done building points!")
-
-/*
-import customnode.CustomTriangleMesh;
-
-
-univ.addVoltex(imp, 1);
-List<Point3f> hull_p = new ArrayList<>();
-for (t in hull.triangles()) {
-	hull_p.add(new Point3f(t.v0xf(), t.v0yf(), t.v0zf()));	
-	hull_p.add(new Point3f(t.v1xf(), t.v1yf(), t.v1zf()));	
-	hull_p.add(new Point3f(t.v2xf(), t.v2yf(), t.v2zf()));	
-}
-CustomTriangleMesh mesh_hull = new CustomTriangleMesh(hull_p);
-println("Hull volume according to 3D Viewer: ${mesh_hull.getVolume()}");
-univ.addCustomMesh(mesh_hull, "Convex Hull");
-*/
+univ.addCustomMesh(new CustomPointMesh(vPoints), "Interior Points")
+println("Done building points: ${vPoints.size()}")
 
 univ.show();
