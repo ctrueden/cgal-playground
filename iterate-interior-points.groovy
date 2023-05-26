@@ -1,3 +1,6 @@
+#@ Dataset image
+#@ OpService ops
+
 // Iterate all points inside a 3D polyhedron.
 
 // We use CGAL's Polygon Mesh Processing (PMP):
@@ -8,19 +11,53 @@
 //   https://doc.cgal.org/latest/Mesh_3/index.html
 
 //---------------------------------------------
+// Calculate mesh from active image using Marching Cubes.
+
+import net.imagej.mesh.Mesh;
+import net.imagej.mesh.Meshes;
+import net.imglib2.type.BooleanType;
+import net.imglib2.util.Util;
+
+if (image.getType() instanceof BooleanType) {
+	// input image is a binary image
+	mask = image;
+}
+else {
+	// convert input image to binary by auto-thresholding
+	mask = ops.threshold().otsu(image);
+}
+println("Mask = ${mask} [type= ${Util.getTypeFromInterval(mask).getClass().getName()}]");
+isolevel = 1
+Mesh mesh = Meshes.marchingCubes(mask, isolevel);
+println("mesh = ${mesh} [${mesh.triangles().size()} triangles, ${mesh.vertices().size()} vertices]")
+mesh = Meshes.removeDuplicateVertices(mesh, 0);
+println("deduped mesh = ${mesh} [${mesh.triangles().size()} triangles, ${mesh.vertices().size()} vertices]")
+mesh = Meshes.simplify(mesh, 0.5, 6);
+println("simplified mesh = ${mesh} [${mesh.triangles().size()} triangles, ${mesh.vertices().size()} vertices]")
+double meshVolume = ops.geom().size(mesh).getRealDouble();
+println("mesh volume = " + meshVolume);
+
+//---------------------------------------------
 // Read STL file into an imagej-mesh Mesh.
 
 import net.imagej.mesh.naive.NaiveDoubleMesh
 import java.io.File
 import net.imagej.mesh.io.stl.STLMeshIO
 
+/*
 mesh = new NaiveDoubleMesh()
 stlFile = new File("/home/curtis/data/3d/t1-head-hull-binary.stl")
 new STLMeshIO().read(mesh, stlFile)
-println("Loaded mesh: " + mesh)
-println("Mesh vertex count: " + mesh.vertices().size())
+println("Loaded mesh: ${mesh}")
+*/
+
+//---------------------------------------------
+// Report mesh size.
+
 verts = mesh.vertices()
 tris = mesh.triangles()
+println("Mesh vertex count: ${verts.size()}")
+println("Mesh triangle count: ${tris.size()}")
 
 //---------------------------------------------
 // Copy mesh into CGAL data structures.
@@ -102,8 +139,9 @@ import CGAL.Polyhedron_3.Polyhedron_3
 Polyhedron_3 P = new Polyhedron_3();
 println("Executing polygon_soup_to_polygon_mesh")
 CGAL_Polygon_mesh_processing.polygon_soup_to_polygon_mesh(points, polygons, P)
-println("Constructed CGAL polyhedron: " + P)
-println("Polyhedron vertex count: " + P.size_of_vertices())
+println("Constructed CGAL polyhedron: ${P}")
+println("Polyhedron vertex count: ${P.size_of_vertices()}")
+println("Polyhedron facet count: ${P.size_of_facets()}")
 
 //---------------------------------------------
 // Remove isolated vertices.
@@ -112,7 +150,8 @@ println("Polyhedron vertex count: " + P.size_of_vertices())
 
 CGAL_Polygon_mesh_processing.remove_isolated_vertices(P);
 println("Removed isolated vertices")
-println("New vertex count: " + P.size_of_vertices())
+println("New vertex count: ${P.size_of_vertices()}")
+println("New facet count: ${P.size_of_facets()}")
 
 //---------------------------------------------
 /* NB: Function is not available in Java SWIG bindings.
@@ -126,7 +165,7 @@ println("Done!")
 
 //---------------------------------------------
 // Sanity check.
-println("Is it closed? " + P.is_closed())
+println("Is it closed? ${P.is_closed()}")
 
 // Darn. It needs to be closed, or interior/exterior has no meaning, and CGAL fails.
 // It's confusing, because according to the CGAL docs
@@ -140,7 +179,7 @@ println("Is it closed? " + P.is_closed())
 // But I include it here because it's something I tried (unsuccessfully) to make things work.
 println("Triangulating faces")
 CGAL_Polygon_mesh_processing.triangulate_faces(P);
-println("Is it closed now? " + P.is_closed())
+println("Is it closed now? ${P.is_closed()}")
 
 // Argh, not sure why this thing isn't closed... it is a saved PLY file of a convex hull computed by imagej-mesh.
 // As a workaround, let's recompute the convex hull again, this time using CGAL.
@@ -150,9 +189,10 @@ import CGAL.Convex_hull_3.CGAL_Convex_hull_3
 println("Recomputing convex hull...")
 Polyhedron_3 hull = new Polyhedron_3();
 CGAL_Convex_hull_3.convex_hull_3(points.iterator(), hull);
-println("convex hull has " + hull.size_of_vertices() + " vertices");
+println("convex hull has ${hull.size_of_vertices()} vertices");
+println("convex hull has ${hull.size_of_facets()} facets");
 //println("is strongly convex? " + CGAL_Convex_hull_3.is_strongly_convex_3(hull));
-println("Is the hull closed? " + hull.is_closed())
+println("Is the hull closed? ${hull.is_closed()}")
 
 //---------------------------------------------
 // What's the bounding box of our data?
